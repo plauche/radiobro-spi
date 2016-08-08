@@ -14,6 +14,7 @@ Author                          : Conor Forde, Rowen Simpson
 #include <stdbool.h>
 
 #include "kubos-hal/spi.h"
+#include "kubos-hal/gpio.h"
 
 #define MODULATION_SIZE         3
 #define TRANSMIT_SIZE           7
@@ -23,9 +24,17 @@ int8_t static const *FREQUENCY = "437176000";
 //int8_t static const *CALLSIGN = "ON3ELI";
 
 #define SPI_BUS K_SPI1
+#define SPI_CS P26
+
+#define CS_LOW() k_gpio_write(SPI_CS, 0);
+#define CS_HIGH() k_gpio_write(SPI_CS, 1);
 
 void RadioInit(void)
 {
+    /* init pin for chip select */
+    k_gpio_init(SPI_CS, K_GPIO_OUTPUT, K_GPIO_PULL_UP);
+    CS_HIGH();
+
     /* init SPI */
     KSPIConf conf = {
         .role = K_SPI_MASTER,
@@ -63,7 +72,9 @@ void PacketBuilder(const bool report, const int8_t *packet,
     }
 
     strcat(local_packet, "\r");               // insert carriage return to end of packet
+    CS_LOW();
     Send((int8_t const*)local_packet);
+    CS_HIGH();
 }
 
 
@@ -73,13 +84,16 @@ void TempVoltageThreshold(const int8_t *field, const uint8_t *value) {
     packet[4] = *field;                                         // Insert the field to be altered
     strcat((char *)packet, (char const *)value);                // Add the required value to the string
     strcat((char *)packet, "\r");                               // Add the carriage return
+    CS_LOW();
     Send(packet);                                               // Send the packet via spi
+    CS_HIGH();
 }
 
 void AX25(const int8_t *port, const int8_t *destination_callsign, int8_t ax25_destination, const int8_t *source_callsign, int8_t ax25_source) {
   int8_t packet[40] = "s,a,0";
   int data;
   packet[4] = *port;
+  CS_LOW();
   Send(packet);
   for(int i = 0; i <= 5; i++)
   {
@@ -94,6 +108,7 @@ void AX25(const int8_t *port, const int8_t *destination_callsign, int8_t ax25_de
     k_spi_write(SPI_BUS, &data, 1);
   }
     k_spi_write(SPI_BUS, &ax25_source, 1);
+    CS_HIGH();
 }
 
 void TransmitModulation(const int8_t *port, const bool report,
@@ -131,7 +146,9 @@ void EnableTransmitPort(const int8_t *port, const bool report, const bool enable
         }
     }
     packet[2] = *port;                          // insert relevent port
+    CS_LOW();
     Send(packet);
+    CS_HIGH();
 }
 
 void RecieveModulation(const bool report, const int8_t *symbol_val,
@@ -169,20 +186,25 @@ void ReceivePortEnableDisable(const bool report, const bool enable){
         memcpy(packet, "s,r,p,e,d\r", 11);
       }
   }
+  CS_LOW();
  Send((const int8_t *)packet);                                                  // send the Packet via spi
+ CS_HIGH();
 }
 
 void DataShuttle(const int8_t *data){
   int8_t packet[1000] = "$";                                                    // data packet of max size 1000
   strcat((char*)packet,(char const *)data);                                     // add data to packet
   strcat((char*)packet,"\r");
+  CS_LOW();
   Send(packet);
+  CS_HIGH();
 }
 
 void KissTNC(const int8_t *port, const int8_t *destination_callsign, int8_t ax25_destination, const int8_t *source_callsign, int8_t ax25_source, const int8_t *data) {
   int8_t packet[1000] = "$";
   int buf;
   buf = 0xC0;
+  CS_LOW();
   k_spi_write(SPI_BUS, &buf, 1);
   k_spi_write(SPI_BUS, port, 1);
   for(int i = 0; i <= 5; i++)
@@ -209,6 +231,7 @@ void KissTNC(const int8_t *port, const int8_t *destination_callsign, int8_t ax25
 
     data = 0xC0;
     k_spi_write(SPI_BUS, &data, 1);
+    CS_HIGH();
 }
 
 void OutputChannelControl(const int8_t *output_pin, const int8_t *pin_behaviour){
@@ -216,15 +239,21 @@ void OutputChannelControl(const int8_t *output_pin, const int8_t *pin_behaviour)
   packet[1] = *output_pin;
   packet[2] = *pin_behaviour;
   strcat((char*)packet,"\r");
+  CS_LOW();
   Send(packet);
+  CS_HIGH();
 }
 
 void RadioPropertiesPacket(){
+    CS_LOW();
   Send("p");
+  CS_HIGH();
 }
 
 void Housekeeping(){
+    CS_LOW();
   Send("h");
+  CS_HIGH();
 }
 
 void RadioTestTrans(const int8_t *port, const int8_t *duration){
@@ -234,5 +263,7 @@ strcat((char*)packet,",");
 strcat((char*)packet,(char *)duration);
 strcat((char*)packet,",");
 strcat((char*)packet,"w");
+CS_LOW();
 Send(packet);
+CS_HIGH();
 }
